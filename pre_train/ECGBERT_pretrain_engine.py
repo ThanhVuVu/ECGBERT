@@ -9,7 +9,8 @@ from torch.utils.data import DataLoader, random_split
 from tqdm import tqdm
 from transformers import BertTokenizer
 from torch.optim import AdamW
-from torch.optim.lr_scheduler import StepLR
+from torch import Tensor
+import math
 import time
 import torch.cuda.amp as amp
 
@@ -57,11 +58,30 @@ class UNetCNNEmbedding(nn.Module):
  
         return x
 
+class PositionalEncoding(nn.Module):
+
+    def __init__(self, max_len: int, d_model: int):
+        super().__init__()
+        position = torch.arange(max_len).unsqueeze(1)
+        div_term = torch.exp(torch.arange(0, d_model, 2) * (-math.log(10000.0) / d_model))
+        pe = torch.zeros(max_len, 1, d_model)
+        pe[:, 0, 0::2] = torch.sin(position * div_term)
+        pe[:, 0, 1::2] = torch.cos(position * div_term)
+        self.register_buffer('pe', pe)
+
+    def forward(self, x: Tensor) -> Tensor:
+        """
+        Arguments:
+            x: Tensor, shape ``[seq_len, batch_size, embedding_dim]``
+        """
+        x = x + self.pe[:x.size(0)]
+        return x
+
 class ECGBERT(nn.Module):
     def __init__(self, vocab_size, embed_dim, max_seq_len, num_heads, num_layers, hidden_dim):
         super(ECGBERT, self).__init__()
         self.token_embedding = nn.Embedding(vocab_size, embed_dim)
-        self.positional_embedding = nn.Embedding(max_seq_len, embed_dim)
+        self.positional_embedding = PositionalEncoding(max_seq_len, embed_dim)
         self.cnn_embedding = UNetCNNEmbedding(in_channels=1, embed_dim=embed_dim)
 
         encoder_layer = nn.TransformerEncoderLayer(d_model=embed_dim, nhead=num_heads, dim_feedforward=hidden_dim)
