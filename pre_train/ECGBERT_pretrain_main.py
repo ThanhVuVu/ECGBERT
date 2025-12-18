@@ -8,7 +8,7 @@ import torch.backends.cudnn as cudnn
 from utils.misc import yaml_load
 
 from ECGDataset import ECGDataset, LoadedECGDataset
-from test import BERT_pretrain
+from ECGBERT_pretrain_engine import BERT_pretrain
 
 import logging
 logging.basicConfig(level='INFO')
