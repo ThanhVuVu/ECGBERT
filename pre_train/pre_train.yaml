@@ -1,0 +1,11 @@
+dataset:
+  org_dir: /path/to/original_ecg_data
+  preprocessing_dir: /path/to/preprocessed_data
+
+preproc:
+  raw_data_hdf5_exists: false
+  clustering_model_exists: false
+  use_pca: true
+  clustering_sample_fraction: 0.1
+  sentence_sample_fraction: 0.2
+  mask_ratio: 0.15
