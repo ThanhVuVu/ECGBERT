@@ -1,6 +1,8 @@
 dataset:
-  org_dir: /path/to/original_ecg_data
-  preprocessing_dir: /path/to/preprocessed_data
+  org_dir: /kaggle/working/mitdb
+  preprocessing_dir: /kaggle/working/preprocessed
+  output_dir:  /kaggle/working/outputs
+  num_leads: 1
 
 preproc:
   raw_data_hdf5_exists: false
@@ -9,3 +11,12 @@ preproc:
   clustering_sample_fraction: 0.1
   sentence_sample_fraction: 0.2
   mask_ratio: 0.15
+  seq_len: 5000
+
+train:
+  num_epochs: 20
+  batch_size: 16
+  learning_rate: 0.0001
+  pretrain_sample_fraction: 1.0
+  device: cuda
+  train_data_exists: False
