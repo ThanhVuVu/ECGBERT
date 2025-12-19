@@ -1,7 +1,7 @@
 dataset:
-  org_dir: /kaggle/input/fork-of-notebook85e3d82656/mitdb
-  preprocessing_dir: /kaggle/input/fork-of-notebook85e3d82656/preprocessed
-  output_dir:  /kaggle/input/fork-of-notebook85e3d82656/outputs
+  org_dir: /kaggle/working/mitdb
+  preprocessing_dir: /kaggle/working/preprocessed
+  output_dir:  /kaggle/working/outputs
   num_leads: 2
 
 preproc:
