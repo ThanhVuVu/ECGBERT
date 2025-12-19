@@ -5,8 +5,8 @@ dataset:
   num_leads: 2
 
 preproc:
-  raw_data_hdf5_exists: false
-  clustering_model_exists: false
+  raw_data_hdf5_exists: True
+  clustering_model_exists: True
   use_pca: true
   clustering_sample_fraction: 0.1
   sentence_sample_fraction: 0.2
@@ -14,9 +14,9 @@ preproc:
   seq_len: 5000
 
 train:
-  num_epochs: 20
+  num_epochs: 50
   batch_size: 16
   learning_rate: 0.0001
   pretrain_sample_fraction: 1.0
   device: cuda
-  train_data_exists: False
+  train_data_exists: True
