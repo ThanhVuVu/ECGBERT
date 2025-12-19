@@ -2,7 +2,7 @@ dataset:
   org_dir: /kaggle/working/mitdb
   preprocessing_dir: /kaggle/working/preprocessed
   output_dir:  /kaggle/working/outputs
-  num_leads: 1
+  num_leads: 2
 
 preproc:
   raw_data_hdf5_exists: false
