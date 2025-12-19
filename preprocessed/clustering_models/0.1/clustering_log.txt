@@ -1,0 +1,53 @@
+Starting clustering with new models.
+-----------------------------------
+Processing wave type: P
+P sample size: 23156
+Clustering with 12 clusters.
+Padded segments shape: (23156, 18)
+Shape after PCA: (23156, 10)
+Fitting model ...
+Model for P saved at /kaggle/working/preprocessed/clustering_models/0.1/P_cluster.pkl
+Time taken for P: 0h 32m 30s
+-----------------------------------
+Processing wave type: QRS
+QRS sample size: 14155
+Clustering with 19 clusters.
+Padded segments shape: (14155, 36)
+Shape after PCA: (14155, 10)
+Fitting model ...
+Model for QRS saved at /kaggle/working/preprocessed/clustering_models/0.1/QRS_cluster.pkl
+Time taken for QRS: 1h 30m 15s
+-----------------------------------
+Processing wave type: T
+T sample size: 23039
+Clustering with 14 clusters.
+Padded segments shape: (23039, 36)
+Shape after PCA: (23039, 10)
+Fitting model ...
+Model for T saved at /kaggle/working/preprocessed/clustering_models/0.1/T_cluster.pkl
+Time taken for T: 0h 39m 30s
+-----------------------------------
+Processing wave type: BG
+BG sample size: 20853
+Clustering with 25 clusters.
+Padded segments shape: (20853, 54117)
+Shape after PCA: (20853, 10)
+Fitting model ...
+Model for BG saved at /kaggle/working/preprocessed/clustering_models/0.1/BG_cluster.pkl
+Time taken for BG: 1h 7m 38s
+Total time taken: 3h 49m 54s
+ECG signal Clustering Done
+seq_max_length: 650000
+ECG sentence sample fraction: 0.2
+Number of sample_keys: 9
+Sample keys: ['105.dat', '108.dat', '220.dat', '215.dat', '113.dat', '101.dat', '209.dat', '212.dat', '100.dat']
+105.dat
+sentence_token : ftorch.Size([2, 650000])
+masked_sentence_token : ftorch.Size([2, 650000])
+masked_sentence_attention_mask : ftorch.Size([2, 650000])
+ECG sentence result_dict: 9
+ECG sentence generation Done
+ECG sentence keys_list:9
+Dataset has been saved to /kaggle/working/preprocessed/0.2_ECGBERT_dataset.hdf5.
+ECGPreprocessing all Done
+1.0 - train_size: 7, val_size: 2
