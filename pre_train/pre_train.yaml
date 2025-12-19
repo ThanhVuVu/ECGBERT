@@ -1,7 +1,7 @@
 dataset:
-  org_dir: /kaggle/working/mitdb
-  preprocessing_dir: /kaggle/working/preprocessed
-  output_dir:  /kaggle/working/outputs
+  org_dir: /kaggle/working/ECGBERT-reproduce-project-/mitdb
+  preprocessing_dir: /kaggle/working/ECGBERT-reproduce-project-/preprocessed
+  output_dir:  /kaggle/working/ECGBERT-reproduce-project-/outputs
   num_leads: 2
 
 preproc:
