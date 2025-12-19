@@ -99,7 +99,11 @@ class ECGBERT(nn.Module):
         signal_flat = signal.view(batch_size * lead, 1, seq_max_len)
         
         token_embed = self.token_embedding(masked_sentence_token_flat)
-        pos_embed = self.positional_embedding(masked_sentence_token_flat)
+        # token_embed shape: [batch_size * lead, seq_max_len, embed_dim]
+        # PositionalEncoding expects [seq_len, batch_size, embedding_dim]
+        token_embed_transposed = token_embed.permute(1, 0, 2)  # [seq_max_len, batch_size * lead, embed_dim]
+        pos_embed = self.positional_embedding(token_embed_transposed)
+        pos_embed = pos_embed.permute(1, 0, 2)  # Back to [batch_size * lead, seq_max_len, embed_dim]
         
         signal_embed = self.cnn_embedding(signal_flat).permute(0,2,1)
         
