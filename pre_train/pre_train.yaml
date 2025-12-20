@@ -11,7 +11,6 @@ preproc:
   clustering_sample_fraction: 0.1
   sentence_sample_fraction: 0.2
   mask_ratio: 0.15
-  seq_len: 5000
 
 train:
   num_epochs: 500
