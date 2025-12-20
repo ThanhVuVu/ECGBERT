@@ -1,12 +1,12 @@
 dataset:
-  org_dir: /kaggle/working/ECGBERT-reproduce-project-/mitdb
+  org_dir: /kaggle/working/ECGBERT-reproduce-project-/ptbdb
   preprocessing_dir: /kaggle/working/ECGBERT-reproduce-project-/preprocessed
   output_dir:  /kaggle/working/ECGBERT-reproduce-project-/outputs
-  num_leads: 2
+  num_leads: 12
 
 preproc:
-  raw_data_hdf5_exists: True
-  clustering_model_exists: True
+  raw_data_hdf5_exists: False
+  clustering_model_exists: False
   use_pca: true
   clustering_sample_fraction: 0.1
   sentence_sample_fraction: 0.2
@@ -18,4 +18,4 @@ train:
   learning_rate: 0.0005
   pretrain_sample_fraction: 1.0
   device: cuda
-  train_data_exists: True
+  train_data_exists: False
