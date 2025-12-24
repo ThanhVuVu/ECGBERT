@@ -128,8 +128,8 @@ class ECGEmbeddingModel(nn.Module):
     def __init__(self, vocab_size, embedding_dim):
         super(ECGEmbeddingModel, self).__init__()
         self.token_embedding = TokenEmbedding(vocab_size, embedding_dim)
-        self.positional_embedding = PositionalEncoding(embedding_dim)
-        self.cnn_feature_extractor = UNet(in_channels=1, out_channels=embedding_dim)
+        self.positional_embedding = PositionalEncoding(max_len =650002, embedding_dim)
+        self.cnn_feature_extractor = UNet(in_channels=1, embed_dim=embedding_dim)
     
     def forward(self, tokens, signals):
         tokens = tokens.long()
