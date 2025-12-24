@@ -86,7 +86,7 @@ class PositionalEncoding(nn.Module):
 
 class UNet(nn.Module):
     def __init__(self, in_channels, embed_dim): 
-        super(UNetCNNEmbedding, self).__init__() 
+        super(UNet, self).__init__() 
         self.encoder1 = nn.Sequential( 
             nn.Conv1d(in_channels, embed_dim, kernel_size=7, stride=2, padding=3), 
             nn.BatchNorm1d(embed_dim), 
