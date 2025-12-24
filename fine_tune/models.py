@@ -56,15 +56,7 @@ class KMeansClusteringGPU:
                 break
 
         self.n_samples_seen_ += n_samples
-
-class TokenEmbedding(nn.Module):
-    def __init__(self, vocab_size, embed_size):
-        super(TokenEmbedding, self).__init__()
-        self.embedding = nn.Embedding(vocab_size, embed_size)
-
-    def forward(self, x):
-        return self.embedding(x)
-
+        
 class PositionalEncoding(nn.Module):
 
     def __init__(self, max_len: int, d_model: int):
@@ -127,9 +119,9 @@ class UNet(nn.Module):
 class ECGEmbeddingModel(nn.Module):
     def __init__(self, vocab_size, embedding_dim):
         super(ECGEmbeddingModel, self).__init__()
-        self.token_embedding = TokenEmbedding(vocab_size, embedding_dim)
+        self.token_embedding = nn.Embedding(vocab_size, embedding_dim)
         self.positional_embedding = PositionalEncoding(650002, embedding_dim)
-        self.cnn_feature_extractor = UNet(in_channels=1, embed_dim=embedding_dim)
+        self.cnn_embedding  = UNet(in_channels=1, embed_dim=embedding_dim)
     
     def forward(self, tokens, signals):
         tokens = tokens.long()
