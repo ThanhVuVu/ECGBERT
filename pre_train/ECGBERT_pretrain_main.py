@@ -99,7 +99,7 @@ def main(args):
         logger.info("Load Pre_Train ECGDataset")
     
     # pre_train
-    BERT_pretrain(params, dataset, max_seq_len, device)
+    # BERT_pretrain(params, dataset, max_seq_len, device)
     
 if __name__ == '__main__':
     args = get_args_parser()
