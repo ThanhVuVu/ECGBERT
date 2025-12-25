@@ -120,7 +120,7 @@ class ECGEmbeddingModel(nn.Module):
     def __init__(self, vocab_size, embedding_dim):
         super(ECGEmbeddingModel, self).__init__()
         self.token_embedding = nn.Embedding(vocab_size, embedding_dim)
-        self.positional_embedding = PositionalEncoding(650002, embedding_dim)
+        self.positional_embedding = PositionalEncoding(3600, embedding_dim)
         self.cnn_embedding  = UNet(in_channels=1, embed_dim=embedding_dim)
     
     def forward(self, tokens, signals):
@@ -144,7 +144,7 @@ class ECGEmbeddingModel(nn.Module):
         return combined_embedding
 
 class ECGBERTModel(nn.Module):
-    def __init__(self, embedding_dim=64, num_layers=12, num_heads=4, dim_feedforward=512, vocab_size=74):
+    def __init__(self, embedding_dim=64, num_layers=12, num_heads=4, dim_feedforward=512, vocab_size=75):
         super(ECGBERTModel, self).__init__()
         self.encoder_layer = nn.TransformerEncoderLayer(d_model=embedding_dim, nhead=num_heads, dim_feedforward=dim_feedforward)
         self.transformer_encoder = nn.TransformerEncoder(self.encoder_layer, num_layers=num_layers)
