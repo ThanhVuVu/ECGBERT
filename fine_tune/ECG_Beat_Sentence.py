@@ -35,13 +35,43 @@ def process_wave_type_segment(lead_signal_segments, preprocessed_signal_lead):
     return segments
 
 def calculate_distance(signal, cluster_centers):
+    """
+    Calculate Euclidean distance between a signal and cluster centers.
+    
+    Args:
+        signal: 1D array of signal values
+        cluster_centers: 2D array of shape (n_clusters, n_features) or 3D from tslearn
+    
+    Returns:
+        distances: 1D array of distances to each cluster center
+    """
+    # Ensure signal is 1D
+    signal = np.array(signal).flatten()
+    
+    # Ensure cluster_centers is 2D
+    cluster_centers = np.array(cluster_centers)
+    if cluster_centers.ndim == 1:
+        cluster_centers = cluster_centers.reshape(1, -1)
+    elif cluster_centers.ndim == 3:
+        # tslearn TimeSeriesKMeans: (n_clusters, n_timesteps, n_features) -> (n_clusters, n_timesteps * n_features)
+        n_clusters, n_timesteps, n_features = cluster_centers.shape
+        cluster_centers = cluster_centers.reshape(n_clusters, n_timesteps * n_features)
+    elif cluster_centers.ndim > 2:
+        # Flatten all dimensions except the first (cluster dimension)
+        cluster_centers = cluster_centers.reshape(cluster_centers.shape[0], -1)
+    
     signal_len = len(signal)
     cluster_len = cluster_centers.shape[1]
     
+    # Pad or truncate signal to match cluster center length
     if signal_len != cluster_len:
-        signal = np.pad(signal, (0, max(cluster_len - signal_len, 0)), 'constant')[:cluster_len]
+        if signal_len < cluster_len:
+            signal = np.pad(signal, (0, cluster_len - signal_len), 'constant')
+        else:
+            signal = signal[:cluster_len]
     
-    distances = euclidean_distances([signal], cluster_centers)
+    # Calculate distances - signal should be (1, n_features), cluster_centers (n_clusters, n_features)
+    distances = euclidean_distances(signal.reshape(1, -1), cluster_centers)
     return distances
 
 def process_lead_signal(lead, signal_segments, preprocessed_signal, cluster_dir, wave_types):
