@@ -71,24 +71,45 @@ def process_lead_signal(lead, signal_segments, preprocessed_signal, cluster_dir,
         # Extract cluster centers from the model
         # The model is a KMeans or TimeSeriesKMeans object saved with joblib
         if hasattr(cluster_model, 'cluster_centers_'):
-            # Standard sklearn KMeans
+            # Standard sklearn KMeans - shape: (n_clusters, n_features)
             cluster_centers = cluster_model.cluster_centers_
         elif hasattr(cluster_model, 'centroids_'):
-            # tslearn TimeSeriesKMeans
+            # tslearn TimeSeriesKMeans - shape: (n_clusters, n_timesteps, n_features) or (n_clusters, n_timesteps)
             cluster_centers = cluster_model.centroids_
+            # If 3D, reshape to 2D: flatten time and feature dimensions
+            if cluster_centers.ndim == 3:
+                # Reshape from (n_clusters, n_timesteps, n_features) to (n_clusters, n_timesteps * n_features)
+                n_clusters, n_timesteps, n_features = cluster_centers.shape
+                cluster_centers = cluster_centers.reshape(n_clusters, n_timesteps * n_features)
+            elif cluster_centers.ndim > 2:
+                # Flatten all dimensions except the first (cluster dimension)
+                cluster_centers = cluster_centers.reshape(cluster_centers.shape[0], -1)
         elif hasattr(cluster_model, 'cpu'):
             # PyTorch tensor (fallback)
             cluster_centers = cluster_model.cpu().numpy()
+            if cluster_centers.ndim > 2:
+                cluster_centers = cluster_centers.reshape(cluster_centers.shape[0], -1)
         elif isinstance(cluster_model, np.ndarray):
             # Already a numpy array (cluster centers directly)
             cluster_centers = cluster_model
+            if cluster_centers.ndim > 2:
+                cluster_centers = cluster_centers.reshape(cluster_centers.shape[0], -1)
         else:
             # Try to convert to numpy array
             cluster_centers = np.array(cluster_model)
+            if cluster_centers.ndim > 2:
+                cluster_centers = cluster_centers.reshape(cluster_centers.shape[0], -1)
         
-        # Ensure it's a numpy array
+        # Ensure it's a numpy array and 2D
         if not isinstance(cluster_centers, np.ndarray):
             cluster_centers = np.array(cluster_centers)
+        
+        # Final check: ensure 2D shape (n_clusters, n_features)
+        if cluster_centers.ndim != 2:
+            if cluster_centers.ndim == 1:
+                cluster_centers = cluster_centers.reshape(1, -1)
+            else:
+                cluster_centers = cluster_centers.reshape(cluster_centers.shape[0], -1)
 
         for seg_idx, signal in enumerate(wave_type_preprocessed_signal):
             distances = calculate_distance(signal, cluster_centers)
