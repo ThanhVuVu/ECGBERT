@@ -3,7 +3,7 @@ import pickle
 import torch
 import torch.nn as nn
 import torch.optim as optim
-from models import ECGEmbeddingModel, ECGBERTModel
+from fine_tune.models import ECGEmbeddingModel, ECGBERTModel
 from tqdm import tqdm
 import numpy as np
 

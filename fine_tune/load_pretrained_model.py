@@ -5,7 +5,7 @@ Helper script to load and convert pretrained ECGBERT model for fine-tuning
 import torch
 import os
 import logging
-from models import ECGEmbeddingModel, ECGBERTModel
+from fine_tune.models import ECGEmbeddingModel, ECGBERTModel
 
 logging.basicConfig(level='INFO')
 logger = logging.getLogger(__name__)

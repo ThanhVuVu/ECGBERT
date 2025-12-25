@@ -2,10 +2,10 @@
 Fine-tuning script for Heartbeat Classification using pretrained ECGBERT model
 """
 
-from ECG_Heartbeat_Classification import ECG_Heartbeat_Preprocessing
-from ECG_Segmentation import ECG_Segmentation
-from ECG_Beat_Sentence import ECG_Beat_Sentence
-from Fine_tune_engine import Fine_tune_engine
+from fine_tune.ECG_Heartbeat_Classification import ECG_Heartbeat_Preprocessing
+from fine_tune.ECG_Segmentation import ECG_Segmentation
+from fine_tune.ECG_Beat_Sentence import ECG_Beat_Sentence
+from fine_tune.Fine_tune_engine import Fine_tune_engine
 
 import os
 import logging

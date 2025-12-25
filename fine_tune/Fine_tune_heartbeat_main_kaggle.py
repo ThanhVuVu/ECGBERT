@@ -3,15 +3,24 @@ Kaggle-specific fine-tuning script for Heartbeat Classification
 Optimized for Kaggle GPU environment with configurable paths
 """
 
-from ECG_Heartbeat_Classification import ECG_Heartbeat_Preprocessing
-from ECG_Segmentation import ECG_Segmentation
-from ECG_Beat_Sentence import ECG_Beat_Sentence
-from Fine_tune_engine import Fine_tune_engine
-
 import os
 import sys
 import logging
 import torch
+
+# Handle imports - works both when running as module and directly
+try:
+    from fine_tune.ECG_Heartbeat_Classification import ECG_Heartbeat_Preprocessing
+    from fine_tune.ECG_Segmentation import ECG_Segmentation
+    from fine_tune.ECG_Beat_Sentence import ECG_Beat_Sentence
+    from fine_tune.Fine_tune_engine import Fine_tune_engine
+except ImportError:
+    # Fallback for when running from fine_tune directory
+    sys.path.insert(0, os.path.dirname(os.path.dirname(os.path.abspath(__file__))))
+    from fine_tune.ECG_Heartbeat_Classification import ECG_Heartbeat_Preprocessing
+    from fine_tune.ECG_Segmentation import ECG_Segmentation
+    from fine_tune.ECG_Beat_Sentence import ECG_Beat_Sentence
+    from fine_tune.Fine_tune_engine import Fine_tune_engine
 
 logging.basicConfig(level='INFO')
 logger = logging.getLogger(__name__)
