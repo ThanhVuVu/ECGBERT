@@ -235,7 +235,7 @@ def Fine_tune_engine(downstream_tasks, pre_train_model_dir, dir):
         train_data_dir = os.path.join(dir, f'{downstream_task}/ECG_Sentence/train')
         val_data_dir = os.path.join(dir, f'{downstream_task}/ECG_Sentence/val')
     
-        vocab_size = 74  # wave 0~70 + cls + sep + mask , total 74s
+        vocab_size = 75  # wave 0~70 + cls + sep + mask , total 74s
         embed_size = 32
         
         emb_model = ECGEmbeddingModel(vocab_size, embed_size).cuda()
