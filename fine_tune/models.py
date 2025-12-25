@@ -73,7 +73,10 @@ class PositionalEncoding(nn.Module):
         Arguments:
             x: Tensor, shape ``[seq_len, batch_size, embedding_dim]``
         """
-        x = x + self.pe[:x.size(0)]
+        # self.pe shape: [max_len, 1, embedding_dim]
+        # x shape should be: [seq_len, batch_size, embedding_dim]
+        seq_len = x.size(0)
+        x = x + self.pe[:seq_len]  # Broadcasting: [seq_len, batch_size, embedding_dim] + [seq_len, 1, embedding_dim]
         return x
 
 class UNet(nn.Module):
@@ -126,7 +129,10 @@ class ECGEmbeddingModel(nn.Module):
     def forward(self, tokens, signals):
         tokens = tokens.long()
         token_embedded = self.token_embedding(tokens)
-        position_embedded = self.positional_embedding(tokens)
+        # PositionalEncoding expects [seq_len, batch_size, embedding_dim]
+        token_embedded_transposed = token_embedded.permute(1, 0, 2)  # [seq_len, batch_size, embedding_dim]
+        position_embedded = self.positional_embedding(token_embedded_transposed)
+        position_embedded = position_embedded.permute(1, 0, 2)  # Back to [batch_size, seq_len, embedding_dim]
         
         signals = signals.unsqueeze(1)  # [batch_size, seq_len] -> [batch_size, 1, seq_len]
         wave_features = self.cnn_embedding(signals).permute(0, 2, 1)
