@@ -144,7 +144,7 @@ class ECGEmbeddingModel(nn.Module):
         return combined_embedding
 
 class ECGBERTModel(nn.Module):
-    def __init__(self, embedding_dim=64, num_layers=12, num_heads=4, dim_feedforward=512, vocab_size=75):
+    def __init__(self, embedding_dim=64, num_layers=12, num_heads=4, dim_feedforward=64, vocab_size=75):
         super(ECGBERTModel, self).__init__()
         self.encoder_layer = nn.TransformerEncoderLayer(d_model=embedding_dim, nhead=num_heads, dim_feedforward=dim_feedforward)
         self.transformer_encoder = nn.TransformerEncoder(self.encoder_layer, num_layers=num_layers)
