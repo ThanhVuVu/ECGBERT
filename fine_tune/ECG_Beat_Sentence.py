@@ -45,15 +45,35 @@ def process_lead_signal(lead, signal_segments, preprocessed_signal, cluster_dir,
 
         # Use correct file name matching actual files
         cluster_file = os.path.join(cluster_dir, wave_type_to_file[wave_type])
-        cluster_data = load_pkl_data(cluster_file)
         
-        # Handle both tensor and numpy array formats
-        if hasattr(cluster_data, 'cpu'):
-            cluster_centers = cluster_data.cpu().numpy()
-        elif hasattr(cluster_data, 'numpy'):
-            cluster_centers = cluster_data.numpy()
+        # Load the clustering model (saved with joblib.dump)
+        try:
+            cluster_model = load_pkl_data(cluster_file)
+        except Exception as e:
+            raise RuntimeError(f"Failed to load cluster file {cluster_file}: {e}. "
+                             f"File may be corrupted or in wrong format.")
+        
+        # Extract cluster centers from the model
+        # The model is a KMeans or TimeSeriesKMeans object saved with joblib
+        if hasattr(cluster_model, 'cluster_centers_'):
+            # Standard sklearn KMeans
+            cluster_centers = cluster_model.cluster_centers_
+        elif hasattr(cluster_model, 'centroids_'):
+            # tslearn TimeSeriesKMeans
+            cluster_centers = cluster_model.centroids_
+        elif hasattr(cluster_model, 'cpu'):
+            # PyTorch tensor (fallback)
+            cluster_centers = cluster_model.cpu().numpy()
+        elif isinstance(cluster_model, np.ndarray):
+            # Already a numpy array (cluster centers directly)
+            cluster_centers = cluster_model
         else:
-            cluster_centers = np.array(cluster_data)
+            # Try to convert to numpy array
+            cluster_centers = np.array(cluster_model)
+        
+        # Ensure it's a numpy array
+        if not isinstance(cluster_centers, np.ndarray):
+            cluster_centers = np.array(cluster_centers)
 
         for seg_idx, signal in enumerate(wave_type_preprocessed_signal):
             distances = calculate_distance(signal, cluster_centers)
