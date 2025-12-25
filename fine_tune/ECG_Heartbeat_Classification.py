@@ -52,12 +52,12 @@ BEAT_TYPE_MAP = {
     'Q': 4,  # Unclassifiable beat
 }
 
-def load_ecg_data_with_beat_labels(record_path, binary_classification=False):
+def load_ecg_data_with_beat_labels(record_path, binary_classification=False, dataset_dir=None):
     """
     Load ECG data and create beat-level labels from MIT-BIH annotations.
     
     Args:
-        record_path: Path to the .dat file (without extension)
+        record_path: Path to the .dat file (with or without extension)
         binary_classification: If True, binary classification (Normal=0, Abnormal=1)
                              If False, 5-class AAMI classification:
                              - Category N (Normal) = 0
@@ -65,14 +65,44 @@ def load_ecg_data_with_beat_labels(record_path, binary_classification=False):
                              - Category V (Ventricular) = 2
                              - Category F (Fusion) = 3
                              - Category Q (Unclassifiable/Paced) = 4
+        dataset_dir: Directory containing the MIT-BIH files. If None, assumes files are in same dir as record_path
     
     Returns:
         signal: ECG signal data
         fs: Sampling frequency
         labels: Beat-level labels (same length as signal)
     """
-    record = wfdb.rdrecord(record_path[:-4], pn_dir='mitdb')
-    annotation = wfdb.rdann(record_path[:-4], 'atr', pn_dir='mitdb')
+    # Remove .dat extension if present
+    if record_path.endswith('.dat'):
+        record_path = record_path[:-4]
+    
+    # Determine the directory and record name
+    if dataset_dir:
+        # If dataset_dir is provided, record_path should be just the record name
+        record_name = os.path.basename(record_path) if os.path.dirname(record_path) else record_path
+        record_full_path = os.path.join(dataset_dir, record_name)
+    else:
+        # Use record_path as-is
+        record_full_path = record_path
+        dataset_dir = os.path.dirname(record_path) if os.path.dirname(record_path) else '.'
+    
+    # Extract just the record name (without path) for wfdb
+    record_name_only = os.path.basename(record_full_path)
+    
+    # Change to the dataset directory so wfdb can find the files
+    original_cwd = os.getcwd()
+    try:
+        os.chdir(dataset_dir)
+        # Read record and annotation using local files
+        # wfdb will look in current directory for .hea, .dat, .atr files
+        record = wfdb.rdrecord(record_name_only)
+        annotation = wfdb.rdann(record_name_only, 'atr')
+    except Exception as e:
+        logger.error(f"Error reading record {record_name_only} from {dataset_dir}: {e}")
+        raise
+    finally:
+        # Restore original working directory
+        os.chdir(original_cwd)
     
     # Initialize labels array with zeros (default: normal)
     labels = np.zeros(len(record.p_signal), dtype=int)
@@ -128,13 +158,18 @@ def load_dataset(dataset_path, file_extension='.dat', binary_classification=True
             record_id = file_name.replace(file_extension, '')
             
             try:
-                ecg_data, fs, label = load_ecg_data_with_beat_labels(file_path, binary_classification)
+                # Pass dataset_dir so wfdb knows where to find .hea and .atr files
+                ecg_data, fs, label = load_ecg_data_with_beat_labels(
+                    file_path, binary_classification, dataset_dir=dataset_path
+                )
                 ecg_signals.append((ecg_data, fs))
                 patient_ids.append(record_id)
                 labels.append(label)
                 logger.info(f"Loaded {record_id}: signal shape {ecg_data.shape}, labels shape {label.shape}")
             except Exception as e:
                 logger.error(f"Error loading {file_name}: {e}")
+                import traceback
+                logger.error(traceback.format_exc())
                 continue
     
     return ecg_signals, patient_ids, labels

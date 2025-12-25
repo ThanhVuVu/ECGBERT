@@ -38,7 +38,10 @@ def run_finetuning(
     
     Args:
         mitdb_path: Path to MIT-BIH database directory
-        pretrained_model_path: Path to directory containing pretrained model
+        pretrained_model_path: Path to directory containing pretrained model files
+                               Should contain either:
+                               - emb_model_1_results.pth and bert_model_1_results.pth, OR
+                               - sf1.0_bs32_lr0.0005_ep500_ecgbert_model.pth
         clustering_dir: Path to clustering models directory
         output_dir: Output directory for fine-tuning results
         binary_classification: True for binary, False for 5-class AAMI
@@ -59,11 +62,29 @@ def run_finetuning(
     if not os.path.exists(clustering_dir):
         raise FileNotFoundError(f"Clustering models not found at {clustering_dir}")
     
-    # Check for pretrained model
-    pretrained_model_file = os.path.join(pretrained_model_path, 'sf1.0_bs32_lr0.0005_ep500_ecgbert_model.pth')
-    if not os.path.exists(pretrained_model_file):
-        logger.warning(f"Pretrained model not found at {pretrained_model_file}")
-        logger.warning("You may need to extract BERT and embedding models separately")
+    # Determine pretrained model path - handle both file and directory cases
+    if pretrained_model_path:
+        if os.path.isfile(pretrained_model_path):
+            # It's actually a file, not a directory - extract directory
+            actual_model_file = pretrained_model_path
+            pretrained_model_path = os.path.dirname(pretrained_model_path)
+            logger.info(f"Pretrained model path was a file, using directory: {pretrained_model_path}")
+        elif os.path.isdir(pretrained_model_path):
+            # Check for expected model files
+            emb_model = os.path.join(pretrained_model_path, 'emb_model_1_results.pth')
+            bert_model = os.path.join(pretrained_model_path, 'bert_model_1_results.pth')
+            single_model = os.path.join(pretrained_model_path, 'sf1.0_bs32_lr0.0005_ep500_ecgbert_model.pth')
+            if os.path.exists(emb_model) and os.path.exists(bert_model):
+                logger.info("Found separate embedding and BERT model files")
+            elif os.path.exists(single_model):
+                logger.info("Found single pretrained model file")
+            else:
+                logger.warning(f"Expected model files not found in {pretrained_model_path}")
+                logger.warning("Looking for: emb_model_1_results.pth, bert_model_1_results.pth, or sf1.0_bs32_lr0.0005_ep500_ecgbert_model.pth")
+        else:
+            logger.warning(f"Pretrained model path does not exist: {pretrained_model_path}")
+    else:
+        logger.warning("No pretrained model path provided")
     
     # Create output directory
     os.makedirs(output_dir, exist_ok=True)
