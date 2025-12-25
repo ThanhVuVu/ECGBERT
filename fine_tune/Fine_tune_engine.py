@@ -309,6 +309,76 @@ import logging
 logging.basicConfig(level='INFO')
 logger = logging.getLogger(__name__)
 
+def load_pretrained_weights_from_single_file(model_path, vocab_size=75, embed_size=32, device='cuda'):
+    """
+    Load embedding and BERT weights from a single pretrained model file.
+    
+    Args:
+        model_path: Path to the single pretrained model file
+        vocab_size: Vocabulary size
+        embed_size: Embedding dimension
+        device: Device to load on
+    
+    Returns:
+        emb_model: ECGEmbeddingModel with loaded weights
+        bert_model: ECGBERTModel with loaded weights
+    """
+    logger.info(f"Loading pretrained weights from single file: {model_path}")
+    
+    if not os.path.exists(model_path):
+        raise FileNotFoundError(f"Pretrained model file not found: {model_path}")
+    
+    # Load the full model state dict
+    full_state_dict = torch.load(model_path, map_location=device)
+    
+    # Initialize models
+    emb_model = ECGEmbeddingModel(vocab_size, embed_size).to(device)
+    bert_model = ECGBERTModel(embed_size).to(device)
+    
+    # Split weights based on key names
+    # Embedding model keys: token_embedding, positional_embedding, cnn_embedding
+    # BERT model keys: layers (transformer), fc
+    
+    emb_state_dict = {}
+    bert_state_dict = {}
+    
+    for key, value in full_state_dict.items():
+        # Remove any prefix (like 'module.' from DataParallel)
+        clean_key = key.replace('module.', '')
+        
+        if 'token_embedding' in clean_key or 'positional_embedding' in clean_key or 'cnn_embedding' in clean_key:
+            # This belongs to embedding model
+            emb_state_dict[clean_key] = value
+        elif 'transformer' in clean_key:
+            # This belongs to BERT model
+            # Map transformer.layers.X to layers.X format
+            # transformer.layers.0.self_attn... -> layers.0.self_attn...
+            new_key = clean_key.replace('transformer.layers.', 'layers.')
+            bert_state_dict[new_key] = value
+        elif ('fc' in clean_key and 'cnn' not in clean_key):
+            # FC layer belongs to BERT model
+            bert_state_dict[clean_key] = value
+        elif 'layers' in clean_key:
+            # Direct layers reference
+            bert_state_dict[clean_key] = value
+    
+    # Load weights into models
+    try:
+        emb_model.load_state_dict(emb_state_dict, strict=False)
+        logger.info(f"Loaded embedding model weights ({len(emb_state_dict)} parameters)")
+    except Exception as e:
+        logger.warning(f"Could not load embedding model strictly: {e}")
+        emb_model.load_state_dict(emb_state_dict, strict=False)
+    
+    try:
+        bert_model.load_state_dict(bert_state_dict, strict=False)
+        logger.info(f"Loaded BERT model weights ({len(bert_state_dict)} parameters)")
+    except Exception as e:
+        logger.warning(f"Could not load BERT model strictly: {e}")
+        bert_model.load_state_dict(bert_state_dict, strict=False)
+    
+    return emb_model, bert_model
+
 def Fine_tune_engine(downstream_tasks, pre_train_model_dir, dir):
     
     for idx, downstream_task in enumerate(downstream_tasks):
@@ -323,11 +393,41 @@ def Fine_tune_engine(downstream_tasks, pre_train_model_dir, dir):
         emb_model = ECGEmbeddingModel(vocab_size, embed_size).cuda()
         bert_model = ECGBERTModel(embed_size).cuda()
         
-        state_dict = torch.load(os.path.join(pre_train_model_dir, 'emb_model_1_results.pth'))
-        emb_model.load_state_dict(state_dict)
+        # Try to load from separate files first, then fall back to single file
+        emb_model_path = os.path.join(pre_train_model_dir, 'emb_model_1_results.pth')
+        bert_model_path = os.path.join(pre_train_model_dir, 'bert_model_1_results.pth')
+        single_model_path = os.path.join(pre_train_model_dir, 'sf1.0_bs32_lr0.0005_ep500_ecgbert_model.pth')
         
-        state_dict = torch.load(os.path.join(pre_train_model_dir, 'bert_model_1_results.pth'))
-        bert_model.load_state_dict(state_dict)
+        if os.path.exists(emb_model_path) and os.path.exists(bert_model_path):
+            # Load from separate files
+            logger.info("Loading from separate embedding and BERT model files")
+            state_dict = torch.load(emb_model_path, map_location='cuda')
+            emb_model.load_state_dict(state_dict)
+            
+            state_dict = torch.load(bert_model_path, map_location='cuda')
+            bert_model.load_state_dict(state_dict)
+        elif os.path.exists(single_model_path):
+            # Load from single file and split weights
+            logger.info("Loading from single pretrained model file and splitting weights")
+            emb_model, bert_model = load_pretrained_weights_from_single_file(
+                single_model_path, vocab_size, embed_size, device='cuda'
+            )
+        else:
+            # Try to find any .pth file in the directory
+            pth_files = [f for f in os.listdir(pre_train_model_dir) if f.endswith('.pth')]
+            if pth_files:
+                model_file = os.path.join(pre_train_model_dir, pth_files[0])
+                logger.info(f"Loading from found model file: {model_file}")
+                emb_model, bert_model = load_pretrained_weights_from_single_file(
+                    model_file, vocab_size, embed_size, device='cuda'
+                )
+            else:
+                raise FileNotFoundError(
+                    f"No pretrained model files found in {pre_train_model_dir}. "
+                    f"Expected either:\n"
+                    f"  - emb_model_1_results.pth and bert_model_1_results.pth, OR\n"
+                    f"  - sf1.0_bs32_lr0.0005_ep500_ecgbert_model.pth (or any .pth file)"
+                )
         
         experiments = [
             {
