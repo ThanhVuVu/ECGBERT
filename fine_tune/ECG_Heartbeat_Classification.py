@@ -12,6 +12,11 @@ import pickle
 import os
 import logging
 
+# Disable wfdb's automatic downloading and URL construction
+# Set environment variables before importing wfdb if possible
+if 'WFDB_CACHE' not in os.environ:
+    os.environ['WFDB_CACHE'] = 'off'
+
 logging.basicConfig(level='INFO')
 logger = logging.getLogger(__name__)
 
@@ -102,35 +107,45 @@ def load_ecg_data_with_beat_labels(record_path, binary_classification=False, dat
     if not os.path.exists(atr_file):
         raise FileNotFoundError(f"Annotation file not found: {atr_file}")
     
-    # Change to the dataset directory so wfdb can find the files
-    # wfdb looks for files relative to current directory when pn_dir is not specified
+    # Use wfdb's local file reading - change to directory and use record name only
+    # This prevents wfdb from trying to construct URLs
     original_cwd = os.getcwd()
     dataset_dir_abs = os.path.abspath(dataset_dir)
     
     try:
+        # Change to dataset directory - wfdb will look for files in current directory
         os.chdir(dataset_dir_abs)
-        # Read record and annotation using local files
-        # Use pn_dir=None explicitly to prevent downloading from PhysioNet
-        # wfdb will look in current directory for .hea, .dat, .atr files
-        # Use return_res=16 to avoid any download attempts
-        record = wfdb.rdrecord(record_name_only, pn_dir=None, return_res=16)
-        annotation = wfdb.rdann(record_name_only, 'atr', pn_dir=None, return_res=16)
-    except Exception as e:
-        # If that fails, try without return_res
+        
+        # Read using local files only - pn_dir=None tells wfdb not to use PhysioNet
+        # Using record name only (not full path) so wfdb looks in current directory
         try:
-            logger.warning(f"First attempt failed, trying without return_res: {e}")
-            record = wfdb.rdrecord(record_name_only, pn_dir=None)
-            annotation = wfdb.rdann(record_name_only, 'atr', pn_dir=None)
-        except Exception as e2:
-            logger.error(f"Error reading record {record_name_only} from {dataset_dir_abs}: {e2}")
-            logger.error(f"Files checked:")
-            logger.error(f"  hea={hea_file} exists={os.path.exists(hea_file)}")
-            logger.error(f"  dat={dat_file} exists={os.path.exists(dat_file)}")
-            logger.error(f"  atr={atr_file} exists={os.path.exists(atr_file)}")
-            logger.error(f"  Current dir: {os.getcwd()}")
-            raise
+            # Try with explicit local file reading
+            record = wfdb.rdrecord(record_name_only, pn_dir='')
+            annotation = wfdb.rdann(record_name_only, 'atr', pn_dir='')
+        except Exception as e1:
+            # Fallback: try with pn_dir=None
+            try:
+                logger.debug(f"First attempt with pn_dir='' failed, trying pn_dir=None: {e1}")
+                record = wfdb.rdrecord(record_name_only, pn_dir=None)
+                annotation = wfdb.rdann(record_name_only, 'atr', pn_dir=None)
+            except Exception as e2:
+                # Last resort: try without pn_dir parameter at all
+                try:
+                    logger.debug(f"Second attempt failed, trying without pn_dir: {e2}")
+                    record = wfdb.rdrecord(record_name_only)
+                    annotation = wfdb.rdann(record_name_only, 'atr')
+                except Exception as e3:
+                    logger.error(f"All attempts failed to read record {record_name_only}")
+                    logger.error(f"Error: {e3}")
+                    logger.error(f"Dataset directory: {dataset_dir_abs}")
+                    logger.error(f"Current directory: {os.getcwd()}")
+                    logger.error(f"Files:")
+                    logger.error(f"  hea={hea_file} exists={os.path.exists(hea_file)}")
+                    logger.error(f"  dat={dat_file} exists={os.path.exists(dat_file)}")
+                    logger.error(f"  atr={atr_file} exists={os.path.exists(atr_file)}")
+                    raise
     finally:
-        # Restore original working directory
+        # Always restore original working directory
         os.chdir(original_cwd)
     
     # Initialize labels array with zeros (default: normal)
