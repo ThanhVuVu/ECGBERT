@@ -58,8 +58,8 @@ class CombinedModel(nn.Module):
 
 def get_model(save_dir, extra_layers):
 
-    vocab_size = 74  # wave 0~70 + cls + sep + mask , total 74
-    embed_size = 256
+    vocab_size = 75  # wave 0~70 + cls + sep + mask , total 74
+    embed_size = 32
 
     bert_model = ECGBERTModel(embed_size).cuda()
     embedding_model = ECGEmbeddingModel(vocab_size, embed_size).cuda()
