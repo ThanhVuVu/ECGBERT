@@ -5,6 +5,7 @@ import torch.nn as nn
 import torch.optim as optim
 from models import ECGEmbeddingModel, ECGBERTModel
 from tqdm import tqdm
+import numpy as np
 
 def load_pkl_data(file_path):
     with open(file_path, 'rb') as f:
@@ -111,8 +112,14 @@ def fine_tune(emb_model, bert_model, experiment, train_data_dir, save_dir):
     fine_tune_model.train()
     emb_model.eval()
     
-    criterion = nn.BCEWithLogitsLoss()
-    optimizer = optim.Adam(list(bert_model.parameters())) #+ list(extra_model.parameters()), lr=experiment['lr'])
+    # Use appropriate loss function based on number of classes
+    num_classes = experiment.get('num_classes', 5)  # Default to 5 for AAMI standard
+    if num_classes == 1:
+        criterion = nn.BCEWithLogitsLoss()
+    else:
+        criterion = nn.CrossEntropyLoss()  # For multi-class classification
+    
+    optimizer = optim.Adam(list(bert_model.parameters()), lr=experiment.get('lr', 0.001))
 
     train_num_batches = len(os.listdir(train_data_dir)) // experiment['batch_size']
 
@@ -145,11 +152,21 @@ def fine_tune(emb_model, bert_model, experiment, train_data_dir, save_dir):
                     optimizer.zero_grad()
                 
                     embeddings = emb_model(small_tokens, small_signals)
-                    outputs = fine_tune_model(embeddings).squeeze(-1)
-                    outputs = torch.sigmoid(outputs)
-
-                    # Calculate the loss
-                    loss = criterion(outputs, small_labels)
+                    outputs = fine_tune_model(embeddings)
+                    
+                    # Handle different output shapes for binary vs multi-class
+                    num_classes = experiment.get('num_classes', 5)
+                    if num_classes == 1:
+                        outputs = outputs.squeeze(-1)
+                        outputs = torch.sigmoid(outputs)
+                        loss = criterion(outputs, small_labels)
+                    else:
+                        # Multi-class: outputs shape should be [batch, seq_len, num_classes]
+                        # Reshape for CrossEntropyLoss: [batch*seq_len, num_classes] and [batch*seq_len]
+                        batch_size, seq_len, _ = outputs.shape
+                        outputs_flat = outputs.view(-1, num_classes)
+                        labels_flat = small_labels.view(-1).long()
+                        loss = criterion(outputs_flat, labels_flat)
 
                     loss.backward()
                     optimizer.step()
@@ -193,8 +210,18 @@ def evaluate(experiment, val_data_dir, save_dir):
                     small_labels = labels[:, i:i+small_batch_seq_len]
                     
                     embeddings = emb_model(small_tokens, small_signals)
-                    outputs = combined_model(embeddings).squeeze(-1)
-                    preds = torch.sigmoid(outputs)
+                    outputs = combined_model(embeddings)
+                    
+                    num_classes = experiment.get('num_classes', 5)
+                    if num_classes == 1:
+                        outputs = outputs.squeeze(-1)
+                        preds = torch.sigmoid(outputs)
+                    else:
+                        # Multi-class: get class predictions
+                        preds = torch.softmax(outputs, dim=-1)
+                        # Get predicted class (for evaluation, we'll use the probability of class 1+ for binary metrics)
+                        # For multi-class, we'll compute accuracy per class
+                        preds = preds  # Keep full probability distribution
                     
                     batch_preds.append(preds)
                     batch_labels.append(small_labels)
@@ -204,15 +231,60 @@ def evaluate(experiment, val_data_dir, save_dir):
                 
                 pbar.update(1)
 
-    all_preds = torch.cat(all_preds, dim=0).flatten()
-    all_labels = torch.cat(all_labels, dim=0).flatten()
+    all_preds = torch.cat(all_preds, dim=0)
+    all_labels = torch.cat(all_labels, dim=0)
     
-    predicted_labels = (all_preds > 0.5).float()
+    num_classes = experiment.get('num_classes', 5)
     
-    accuracy = (predicted_labels == all_labels).float().mean().item()
-    precision = (predicted_labels * all_labels).sum().item() / (predicted_labels.sum().item() + 1e-8)
-    recall = (predicted_labels * all_labels).sum().item() / (all_labels.sum().item() + 1e-8)
-    specificity = ((1 - predicted_labels) * (1 - all_labels)).sum().item() / ((1 - all_labels).sum().item() + 1e-8)
+    if num_classes == 1:
+        # Binary classification
+        all_preds = all_preds.flatten()
+        all_labels = all_labels.flatten()
+        predicted_labels = (all_preds > 0.5).float()
+        
+        accuracy = (predicted_labels == all_labels).float().mean().item()
+        precision = (predicted_labels * all_labels).sum().item() / (predicted_labels.sum().item() + 1e-8)
+        recall = (predicted_labels * all_labels).sum().item() / (all_labels.sum().item() + 1e-8)
+        specificity = ((1 - predicted_labels) * (1 - all_labels)).sum().item() / ((1 - all_labels).sum().item() + 1e-8)
+    else:
+        # Multi-class classification
+        all_preds_flat = all_preds.view(-1, num_classes)
+        all_labels_flat = all_labels.view(-1).long()
+        
+        # Get predicted classes
+        predicted_labels = torch.argmax(all_preds_flat, dim=1)
+        
+        # Overall accuracy
+        accuracy = (predicted_labels == all_labels_flat).float().mean().item()
+        
+        # Per-class metrics (macro-averaged)
+        precision_per_class = []
+        recall_per_class = []
+        for cls in range(num_classes):
+            cls_pred = (predicted_labels == cls).float()
+            cls_true = (all_labels_flat == cls).float()
+            tp = (cls_pred * cls_true).sum().item()
+            fp = (cls_pred * (1 - cls_true)).sum().item()
+            fn = ((1 - cls_pred) * cls_true).sum().item()
+            
+            prec = tp / (tp + fp + 1e-8)
+            rec = tp / (tp + fn + 1e-8)
+            precision_per_class.append(prec)
+            recall_per_class.append(rec)
+        
+        precision = np.mean(precision_per_class)
+        recall = np.mean(recall_per_class)
+        
+        # Calculate specificity per class (true negative rate)
+        specificity_per_class = []
+        for cls in range(num_classes):
+            cls_pred = (predicted_labels == cls).float()
+            cls_true = (all_labels_flat == cls).float()
+            tn = ((1 - cls_pred) * (1 - cls_true)).sum().item()
+            fp = (cls_pred * (1 - cls_true)).sum().item()
+            specificity_cls = tn / (tn + fp + 1e-8)
+            specificity_per_class.append(specificity_cls)
+        specificity = np.mean(specificity_per_class)
     
     
     logger.info(f'Validation Accuracy: {accuracy:.4f}')
@@ -252,10 +324,10 @@ def Fine_tune_engine(downstream_tasks, pre_train_model_dir, dir):
                 "batch_size": 1,
                 "lr": 0.001,
                 "epochs": 13,
-                "class" : 1,
+                "num_classes": 5,  # 5-class AAMI standard: N, S, V, F, Q
                 "extra_layers": [
                     {'name': 'fc1', 'module': nn.Linear(embed_size, vocab_size)},
-                    {'name': 'fc2', 'module': nn.Linear(vocab_size, 1)}
+                    {'name': 'fc2', 'module': nn.Linear(vocab_size, 5)}  # 5 classes for AAMI standard
                 ]
             }
         ]

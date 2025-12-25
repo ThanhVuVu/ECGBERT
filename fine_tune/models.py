@@ -129,7 +129,7 @@ class ECGEmbeddingModel(nn.Module):
         position_embedded = self.positional_embedding(tokens)
         
         signals = signals.unsqueeze(1)  # [batch_size, seq_len] -> [batch_size, 1, seq_len]
-        wave_features = self.cnn_feature_extractor(signals).permute(0, 2, 1)
+        wave_features = self.cnn_embedding(signals).permute(0, 2, 1)
         
         # 길이 맞춤 (Padding 또는 Slicing)
         seq_len = token_embedded.size(1)
