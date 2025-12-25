@@ -339,15 +339,15 @@ def load_pretrained_weights_from_single_file(model_path, vocab_size=75, embed_si
         if 'token_embedding' in clean_key or 'positional_embedding' in clean_key or 'cnn_embedding' in clean_key:
             # This belongs to embedding model
             emb_state_dict[clean_key] = value
-        elif 'transformer' in clean_key or ('layers' in clean_key and 'cnn' not in clean_key) or ('fc' in clean_key and 'cnn' not in clean_key):
+        elif 'transformer' in clean_key:
             # This belongs to BERT model
-            # Map transformer keys to layers format if needed
-            if 'transformer' in clean_key:
-                # transformer.layers.0.self_attn... -> layers.0.self_attn...
-                new_key = clean_key.replace('transformer.', '')
-                bert_state_dict[new_key] = value
-            else:
-                bert_state_dict[clean_key] = value
+            # Map transformer.layers.X to layers.X format
+            # transformer.layers.0.self_attn... -> layers.0.self_attn...
+            new_key = clean_key.replace('transformer.layers.', 'layers.')
+            bert_state_dict[new_key] = value
+        elif ('fc' in clean_key and 'cnn' not in clean_key):
+            # FC layer belongs to BERT model
+            bert_state_dict[clean_key] = value
     
     # Load weights into models
     try:
