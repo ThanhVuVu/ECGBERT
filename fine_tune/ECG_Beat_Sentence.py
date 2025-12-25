@@ -6,8 +6,23 @@ from itertools import groupby
 from joblib import Parallel, delayed
 
 def load_pkl_data(file_path):
-    with open(file_path, 'rb') as f:
-        return pickle.load(f)
+    """
+    Load data from pickle file, handling both standard pickle and joblib formats.
+    """
+    import joblib
+    
+    try:
+        # Try joblib first (used for sklearn/tslearn models)
+        return joblib.load(file_path)
+    except Exception as e1:
+        try:
+            # Fallback to standard pickle
+            with open(file_path, 'rb') as f:
+                return pickle.load(f)
+        except Exception as e2:
+            raise RuntimeError(f"Failed to load {file_path} with both joblib and pickle. "
+                             f"Joblib error: {e1}. Pickle error: {e2}. "
+                             f"File may be corrupted or in unsupported format.")
 
 def save_pkl_data(save_dir, file_name, save_pkl):
     os.makedirs(save_dir, exist_ok=True)
