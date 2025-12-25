@@ -73,10 +73,7 @@ class PositionalEncoding(nn.Module):
         Arguments:
             x: Tensor, shape ``[seq_len, batch_size, embedding_dim]``
         """
-        # self.pe shape: [max_len, 1, embedding_dim]
-        # x shape should be: [seq_len, batch_size, embedding_dim]
-        seq_len = x.size(0)
-        x = x + self.pe[:seq_len]  # Broadcasting: [seq_len, batch_size, embedding_dim] + [seq_len, 1, embedding_dim]
+        x = x + self.pe[:x.size(0)]
         return x
 
 class UNet(nn.Module):
