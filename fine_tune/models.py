@@ -160,8 +160,16 @@ class ECGBERTModel(nn.Module):
         #self.softmax = nn.Softmax(dim=-1)
 
     def forward(self, x):
+        # x shape: [batch_size, seq_len, embedding_dim]
+        # TransformerEncoderLayer expects [seq_len, batch_size, embedding_dim]
+        x = x.permute(1, 0, 2)  # [seq_len, batch_size, embedding_dim]
+        
         for layer in self.layers:
             x = layer(x)
+        
+        # Permute back to [batch_size, seq_len, embedding_dim]
+        x = x.permute(1, 0, 2)
+        
         x = self.fc(x)
         #x = self.softmax(x)
         return x
