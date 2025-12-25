@@ -146,13 +146,13 @@ class ECGEmbeddingModel(nn.Module):
 class ECGBERTModel(nn.Module):
     def __init__(self, embedding_dim=64, num_layers=4, num_heads=8, dim_feedforward=64, vocab_size=75):
         super(ECGBERTModel, self).__init__()
-        self.encoder_layer = nn.TransformerEncoderLayer(d_model=embedding_dim, nhead=num_heads, dim_feedforward=dim_feedforward)
-        self.transformer_encoder = nn.TransformerEncoder(self.encoder_layer, num_layers=num_layers)
-        self.linear = nn.Linear(embedding_dim, vocab_size)
+        encoder_layer = nn.TransformerEncoderLayer(d_model=embedding_dim, nhead=num_heads, dim_feedforward=dim_feedforward)
+        self.transformer = nn.TransformerEncoder(encoder_layer, num_layers=num_layers)
+        self.fc = nn.Linear(embedding_dim, vocab_size)
         #self.softmax = nn.Softmax(dim=-1)
 
     def forward(self, x):
-        x = self.transformer_encoder(x)
-        x = self.linear(x)
+        x = self.transformer(x)
+        x = self.fc(x)
         #x = self.softmax(x)
         return x
