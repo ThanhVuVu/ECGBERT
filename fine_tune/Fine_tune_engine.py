@@ -141,7 +141,7 @@ def fine_tune(emb_model, bert_model, experiment, train_data_dir, save_dir):
                     fine_tune_model.train()
 
                 tokens = org_tokens[:, 1:-1]
-                small_batch_seq_len = 10000
+                small_batch_seq_len = 3600  # Match positional encoding max_len
                 
                 for i in range(0, tokens.size(1), small_batch_seq_len):
                     
@@ -199,7 +199,7 @@ def evaluate(experiment, val_data_dir, save_dir):
                 tokens, signals, labels = get_batch_data(batch_num, experiment["batch_size"], val_data_dir)
 
                 tokens = tokens[:, 1:-1]  # [CLS]와 [SEP] 토큰 제거
-                small_batch_seq_len = 10000
+                small_batch_seq_len = 3600  # Match positional encoding max_len
                 
                 batch_preds = []
                 batch_labels = []
