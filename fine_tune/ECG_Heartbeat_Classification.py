@@ -17,6 +17,13 @@ import logging
 if 'WFDB_CACHE' not in os.environ:
     os.environ['WFDB_CACHE'] = 'off'
 
+# Try to import local file reader as fallback
+try:
+    from fine_tune.wfdb_local_reader import read_wfdb_record_local, read_wfdb_annotation_local
+    USE_LOCAL_READER = True
+except ImportError:
+    USE_LOCAL_READER = False
+
 logging.basicConfig(level='INFO')
 logger = logging.getLogger(__name__)
 
@@ -107,46 +114,78 @@ def load_ecg_data_with_beat_labels(record_path, binary_classification=False, dat
     if not os.path.exists(atr_file):
         raise FileNotFoundError(f"Annotation file not found: {atr_file}")
     
-    # Use wfdb's local file reading - change to directory and use record name only
-    # This prevents wfdb from trying to construct URLs
-    original_cwd = os.getcwd()
-    dataset_dir_abs = os.path.abspath(dataset_dir)
-    
-    try:
-        # Change to dataset directory - wfdb will look for files in current directory
-        os.chdir(dataset_dir_abs)
-        
-        # Read using local files only - pn_dir=None tells wfdb not to use PhysioNet
-        # Using record name only (not full path) so wfdb looks in current directory
+    # Try to read using local file reader first (bypasses wfdb URL construction)
+    if USE_LOCAL_READER:
         try:
-            # Try with explicit local file reading
-            record = wfdb.rdrecord(record_name_only, pn_dir='')
-            annotation = wfdb.rdann(record_name_only, 'atr', pn_dir='')
-        except Exception as e1:
-            # Fallback: try with pn_dir=None
+            logger.debug(f"Attempting to read {record_name_only} using local file reader")
+            signal, fs, sig_name = read_wfdb_record_local(record_full_path)
+            sample, symbol = read_wfdb_annotation_local(record_full_path, 'atr')
+            
+            # Create a simple record-like object
+            class SimpleRecord:
+                def __init__(self, signal, fs):
+                    self.p_signal = signal
+                    self.fs = fs
+            
+            record = SimpleRecord(signal, fs)
+            
+            # Create a simple annotation-like object
+            class SimpleAnnotation:
+                def __init__(self, sample, symbol):
+                    self.sample = np.array(sample)
+                    self.symbol = np.array(symbol)
+            
+            annotation = SimpleAnnotation(sample, symbol)
+            logger.debug(f"Successfully read {record_name_only} using local file reader")
+        except Exception as e:
+            logger.warning(f"Local file reader failed, falling back to wfdb: {e}")
+            # Fall through to wfdb reading
+            record = None
+            annotation = None
+    else:
+        record = None
+        annotation = None
+    
+    # Fallback to wfdb if local reader not available or failed
+    if record is None or annotation is None:
+        original_cwd = os.getcwd()
+        dataset_dir_abs = os.path.abspath(dataset_dir)
+        
+        try:
+            # Change to dataset directory - wfdb will look for files in current directory
+            os.chdir(dataset_dir_abs)
+            
+            # Read using local files only - pn_dir='' tells wfdb to use local files only
+            # Using record name only (not full path) so wfdb looks in current directory
             try:
-                logger.debug(f"First attempt with pn_dir='' failed, trying pn_dir=None: {e1}")
-                record = wfdb.rdrecord(record_name_only, pn_dir=None)
-                annotation = wfdb.rdann(record_name_only, 'atr', pn_dir=None)
-            except Exception as e2:
-                # Last resort: try without pn_dir parameter at all
+                # Try with explicit local file reading (empty string means local only)
+                record = wfdb.rdrecord(record_name_only, pn_dir='')
+                annotation = wfdb.rdann(record_name_only, 'atr', pn_dir='')
+            except Exception as e1:
+                # Fallback: try with pn_dir=None
                 try:
-                    logger.debug(f"Second attempt failed, trying without pn_dir: {e2}")
-                    record = wfdb.rdrecord(record_name_only)
-                    annotation = wfdb.rdann(record_name_only, 'atr')
-                except Exception as e3:
-                    logger.error(f"All attempts failed to read record {record_name_only}")
-                    logger.error(f"Error: {e3}")
-                    logger.error(f"Dataset directory: {dataset_dir_abs}")
-                    logger.error(f"Current directory: {os.getcwd()}")
-                    logger.error(f"Files:")
-                    logger.error(f"  hea={hea_file} exists={os.path.exists(hea_file)}")
-                    logger.error(f"  dat={dat_file} exists={os.path.exists(dat_file)}")
-                    logger.error(f"  atr={atr_file} exists={os.path.exists(atr_file)}")
-                    raise
-    finally:
-        # Always restore original working directory
-        os.chdir(original_cwd)
+                    logger.debug(f"First attempt with pn_dir='' failed, trying pn_dir=None: {e1}")
+                    record = wfdb.rdrecord(record_name_only, pn_dir=None)
+                    annotation = wfdb.rdann(record_name_only, 'atr', pn_dir=None)
+                except Exception as e2:
+                    # Last resort: try without pn_dir parameter at all
+                    try:
+                        logger.debug(f"Second attempt failed, trying without pn_dir: {e2}")
+                        record = wfdb.rdrecord(record_name_only)
+                        annotation = wfdb.rdann(record_name_only, 'atr')
+                    except Exception as e3:
+                        logger.error(f"All attempts failed to read record {record_name_only}")
+                        logger.error(f"Error: {e3}")
+                        logger.error(f"Dataset directory: {dataset_dir_abs}")
+                        logger.error(f"Current directory: {os.getcwd()}")
+                        logger.error(f"Files:")
+                        logger.error(f"  hea={hea_file} exists={os.path.exists(hea_file)}")
+                        logger.error(f"  dat={dat_file} exists={os.path.exists(dat_file)}")
+                        logger.error(f"  atr={atr_file} exists={os.path.exists(atr_file)}")
+                        raise
+        finally:
+            # Always restore original working directory
+            os.chdir(original_cwd)
     
     # Initialize labels array with zeros (default: normal)
     labels = np.zeros(len(record.p_signal), dtype=int)
