@@ -32,10 +32,28 @@ def calculate_distance(signal, cluster_centers):
 def process_lead_signal(lead, signal_segments, preprocessed_signal, cluster_dir, wave_types):
     lead_signal_vocab = np.zeros(preprocessed_signal.shape[0])
     
+    # Map wave type to actual file name (capitalize to match actual files)
+    wave_type_to_file = {
+        'p': 'P_cluster.pkl',
+        'qrs': 'QRS_cluster.pkl',
+        't': 'T_cluster.pkl',
+        'bg': 'BG_cluster.pkl'
+    }
+    
     for wave_type in wave_types:
         wave_type_preprocessed_signal = process_wave_type_segment(signal_segments[lead][wave_type][0], preprocessed_signal[:, lead])
 
-        cluster_centers = load_pkl_data(os.path.join(cluster_dir, f'{wave_type}_cluster_centorids.pkl')).cpu().numpy()
+        # Use correct file name matching actual files
+        cluster_file = os.path.join(cluster_dir, wave_type_to_file[wave_type])
+        cluster_data = load_pkl_data(cluster_file)
+        
+        # Handle both tensor and numpy array formats
+        if hasattr(cluster_data, 'cpu'):
+            cluster_centers = cluster_data.cpu().numpy()
+        elif hasattr(cluster_data, 'numpy'):
+            cluster_centers = cluster_data.numpy()
+        else:
+            cluster_centers = np.array(cluster_data)
 
         for seg_idx, signal in enumerate(wave_type_preprocessed_signal):
             distances = calculate_distance(signal, cluster_centers)
