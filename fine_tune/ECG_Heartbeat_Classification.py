@@ -89,17 +89,46 @@ def load_ecg_data_with_beat_labels(record_path, binary_classification=False, dat
     # Extract just the record name (without path) for wfdb
     record_name_only = os.path.basename(record_full_path)
     
+    # Get absolute paths to all required files
+    hea_file = os.path.abspath(os.path.join(dataset_dir, f"{record_name_only}.hea"))
+    dat_file = os.path.abspath(os.path.join(dataset_dir, f"{record_name_only}.dat"))
+    atr_file = os.path.abspath(os.path.join(dataset_dir, f"{record_name_only}.atr"))
+    
+    # Verify all required files exist locally
+    if not os.path.exists(hea_file):
+        raise FileNotFoundError(f"Header file not found: {hea_file}")
+    if not os.path.exists(dat_file):
+        raise FileNotFoundError(f"Data file not found: {dat_file}")
+    if not os.path.exists(atr_file):
+        raise FileNotFoundError(f"Annotation file not found: {atr_file}")
+    
     # Change to the dataset directory so wfdb can find the files
+    # wfdb looks for files relative to current directory when pn_dir is not specified
     original_cwd = os.getcwd()
+    dataset_dir_abs = os.path.abspath(dataset_dir)
+    
     try:
-        os.chdir(dataset_dir)
+        os.chdir(dataset_dir_abs)
         # Read record and annotation using local files
+        # Use pn_dir=None explicitly to prevent downloading from PhysioNet
         # wfdb will look in current directory for .hea, .dat, .atr files
-        record = wfdb.rdrecord(record_name_only)
-        annotation = wfdb.rdann(record_name_only, 'atr')
+        # Use return_res=16 to avoid any download attempts
+        record = wfdb.rdrecord(record_name_only, pn_dir=None, return_res=16)
+        annotation = wfdb.rdann(record_name_only, 'atr', pn_dir=None, return_res=16)
     except Exception as e:
-        logger.error(f"Error reading record {record_name_only} from {dataset_dir}: {e}")
-        raise
+        # If that fails, try without return_res
+        try:
+            logger.warning(f"First attempt failed, trying without return_res: {e}")
+            record = wfdb.rdrecord(record_name_only, pn_dir=None)
+            annotation = wfdb.rdann(record_name_only, 'atr', pn_dir=None)
+        except Exception as e2:
+            logger.error(f"Error reading record {record_name_only} from {dataset_dir_abs}: {e2}")
+            logger.error(f"Files checked:")
+            logger.error(f"  hea={hea_file} exists={os.path.exists(hea_file)}")
+            logger.error(f"  dat={dat_file} exists={os.path.exists(dat_file)}")
+            logger.error(f"  atr={atr_file} exists={os.path.exists(atr_file)}")
+            logger.error(f"  Current dir: {os.getcwd()}")
+            raise
     finally:
         # Restore original working directory
         os.chdir(original_cwd)
