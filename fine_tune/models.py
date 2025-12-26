@@ -105,15 +105,27 @@ class UNet(nn.Module):
         enc1 = self.encoder1(x) 
         enc2 = self.encoder2(enc1) 
         dec1 = self.decoder1(enc2) 
-        dec2 = self.decoder2(dec1 + enc1) 
- 
+        # Crop enc1 to match dec1's size before skip connection
+        enc1_cropped = self._crop_tensor(enc1, dec1)
+        dec2 = self.decoder2(dec1 + enc1_cropped) 
+
         x = self.final_conv(dec2) 
- 
+
         return x
 
     def _crop_tensor(self, enc_tensor, dec_tensor):
+        """
+        Crop encoder tensor to match decoder tensor size for skip connection.
+        Handles size mismatches due to rounding in convolution operations.
+        """
         if enc_tensor.size(2) != dec_tensor.size(2):
-            enc_tensor = enc_tensor[:, :, :dec_tensor.size(2)]
+            # Crop enc_tensor to match dec_tensor's length
+            if enc_tensor.size(2) > dec_tensor.size(2):
+                enc_tensor = enc_tensor[:, :, :dec_tensor.size(2)]
+            else:
+                # If dec_tensor is larger, pad enc_tensor (shouldn't happen, but handle it)
+                padding = dec_tensor.size(2) - enc_tensor.size(2)
+                enc_tensor = F.pad(enc_tensor, (0, padding))
         return enc_tensor
 
 class ECGEmbeddingModel(nn.Module):

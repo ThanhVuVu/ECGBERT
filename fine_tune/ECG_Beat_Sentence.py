@@ -199,17 +199,24 @@ def vocab_create_assignment(downstrem_task, processed_data_dir, seg_dir, cluster
                     segment_mean = np.mean(segment_signal)  # Aggregate: use mean of segment
                     sentence_signal.append(segment_mean)
                 
-                # Aggregate labels per segment (use majority vote or first label in segment)
+                # Assign heartbeat-level labels to segments
+                # IMPORTANT: Labels are per heartbeat, not per segment. 
+                # All segments (P, QRS, T, BG) in the same heartbeat should have the SAME label.
+                # 
+                # Since labels are created at sample level with all samples in a heartbeat 
+                # interval having the same label, we take the label from the first sample 
+                # of each segment. This ensures all segments belonging to the same heartbeat 
+                # get the same label (since they all start within the same heartbeat interval).
                 sentence_label = []
                 for idx_st, idx_end, _ in segment_info:
-                    segment_labels = labels[idx_st:idx_end+1]
-                    # Use most common label in segment, or first label if tie
-                    if len(segment_labels) > 0:
-                        unique_labels, counts = np.unique(segment_labels, return_counts=True)
-                        segment_label = unique_labels[np.argmax(counts)]
-                        sentence_label.append(segment_label)
-                    else:
-                        sentence_label.append(0)  # Default label
+                    # Clamp indices to valid range
+                    idx_st = max(0, min(idx_st, len(labels) - 1))
+                    idx_end = max(0, min(idx_end, len(labels) - 1))
+                    
+                    # Get label from first sample of segment
+                    # This represents the heartbeat this segment belongs to
+                    heartbeat_label = labels[idx_st]
+                    sentence_label.append(int(heartbeat_label))
                 
                 # Convert to numpy arrays
                 sentence_signal = np.array(sentence_signal)
