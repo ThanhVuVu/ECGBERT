@@ -75,7 +75,15 @@ def calculate_distance(signal, cluster_centers):
     return distances
 
 def process_lead_signal(lead, signal_segments, preprocessed_signal, cluster_dir, wave_types):
-    lead_signal_vocab = np.zeros(preprocessed_signal.shape[0])
+    """
+    Process lead signal and assign one token per wave segment (as per ECGBERT paper).
+    
+    Returns:
+        wave_tokens: List of tokens (one per segment) in temporal order
+        segment_info: List of (start_idx, end_idx, wave_type) tuples for signal alignment
+    """
+    wave_tokens = []  # List to store tokens (one per segment)
+    segment_info = []  # Store segment info: (start_idx, end_idx, wave_type)
     
     # Map wave type to actual file name (capitalize to match actual files)
     wave_type_to_file = {
@@ -141,14 +149,23 @@ def process_lead_signal(lead, signal_segments, preprocessed_signal, cluster_dir,
             else:
                 cluster_centers = cluster_centers.reshape(cluster_centers.shape[0], -1)
 
+        # Process each wave segment and assign ONE token per segment
         for seg_idx, signal in enumerate(wave_type_preprocessed_signal):
             distances = calculate_distance(signal, cluster_centers)
             cluster_idx = np.argmin(distances) + {'p': 0, 'qrs': 12, 't': 31, 'bg': 45}[wave_type]
 
             idx_st, idx_end = signal_segments[lead][wave_type][0][seg_idx]
-            lead_signal_vocab[idx_st:idx_end+1] = int(cluster_idx)
+            
+            # Store ONE token for this wave segment (not per sample)
+            wave_tokens.append(int(cluster_idx))
+            segment_info.append((idx_st, idx_end, wave_type))
     
-    return lead_signal_vocab
+    # Sort segments by start index to maintain temporal order
+    sorted_indices = sorted(range(len(segment_info)), key=lambda i: segment_info[i][0])
+    sorted_tokens = [wave_tokens[i] for i in sorted_indices]
+    sorted_segment_info = [segment_info[i] for i in sorted_indices]
+    
+    return sorted_tokens, sorted_segment_info
 
 def vocab_create_assignment(downstrem_task, processed_data_dir, seg_dir, cluster_dir, save_dir):
     wave_types = ['p', 'qrs', 't', 'bg']
@@ -169,10 +186,34 @@ def vocab_create_assignment(downstrem_task, processed_data_dir, seg_dir, cluster
                 for lead in range(len(signal_segments))
             )
 
-            for lead, lead_signal_vocab in enumerate(signal_vocabs):
-                sentence_signal = preprocessed_signal[:, lead]
-                sentence = [71] + lead_signal_vocab.tolist() + [72]  # Convert numpy array to list
-                sentence_label = labels 
+            for lead, (wave_tokens, segment_info) in enumerate(signal_vocabs):
+                # Create sentence: [CLS] + wave tokens + [SEP]
+                # Each token represents one wave segment (as per ECGBERT paper)
+                sentence = [71] + wave_tokens + [72]
+                
+                # Aggregate signal per segment to match token count
+                # Each segment's signal is represented by its mean value
+                sentence_signal = []
+                for idx_st, idx_end, _ in segment_info:
+                    segment_signal = preprocessed_signal[idx_st:idx_end+1, lead]
+                    segment_mean = np.mean(segment_signal)  # Aggregate: use mean of segment
+                    sentence_signal.append(segment_mean)
+                
+                # Aggregate labels per segment (use majority vote or first label in segment)
+                sentence_label = []
+                for idx_st, idx_end, _ in segment_info:
+                    segment_labels = labels[idx_st:idx_end+1]
+                    # Use most common label in segment, or first label if tie
+                    if len(segment_labels) > 0:
+                        unique_labels, counts = np.unique(segment_labels, return_counts=True)
+                        segment_label = unique_labels[np.argmax(counts)]
+                        sentence_label.append(segment_label)
+                    else:
+                        sentence_label.append(0)  # Default label
+                
+                # Convert to numpy arrays
+                sentence_signal = np.array(sentence_signal)
+                sentence_label = np.array(sentence_label)
             
                 data = [sentence, sentence_signal, sentence_label]
                 if prefix.endswith('train'):
