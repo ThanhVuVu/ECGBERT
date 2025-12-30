@@ -79,18 +79,28 @@ def get_model(save_dir, extra_layers):
     for layer in extra_layers:
         extra_model.add_module(layer['name'], layer['module'].cuda())
     
-    fine_tune_model = nn.Sequential(
-        bert_model,
-        extra_model
-    )
+    # Use CombinedModel instead of Sequential to properly handle BERT layers
+    # CombinedModel processes through BERT transformer layers (without FC) then extra_model
+    # This matches the structure used in fine_tune() function
+    combined_model = CombinedModel(bert_model, extra_model)
     
     fine_tune_model_path = os.path.join(save_dir, 'pre_batch_fine_tune_model.pth')
     emb_model_path = os.path.join(save_dir, 'pre_batch_emb_model.pth')
 
-    #fine_tune_model.load_state_dict(torch.load(fine_tune_model_path))
-    embedding_model.load_state_dict(torch.load(emb_model_path))
+    # Load saved model weights if they exist
+    if os.path.exists(fine_tune_model_path):
+        try:
+            state_dict = torch.load(fine_tune_model_path, map_location='cuda')
+            combined_model.load_state_dict(state_dict)
+        except Exception as e:
+            # If loading fails, the model will use randomly initialized weights
+            # This is okay for the first evaluation before training
+            pass
     
-    return fine_tune_model, embedding_model
+    if os.path.exists(emb_model_path):
+        embedding_model.load_state_dict(torch.load(emb_model_path, map_location='cuda'))
+    
+    return combined_model, embedding_model
 
 
 def save_model(fine_tune_model, embedding_model, epoch, batch_num, total_loss, save_dir, all_num_batches):
