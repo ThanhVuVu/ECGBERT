@@ -31,7 +31,32 @@ def save_pkl_data(save_dir, file_name, save_pkl):
         pickle.dump(save_pkl, f)
 
 def process_wave_type_segment(lead_signal_segments, preprocessed_signal_lead):
-    segments = [preprocessed_signal_lead[st:end+1] for (st, end) in lead_signal_segments]
+    """
+    Extract wave segments from signal, handling edge cases.
+    
+    Args:
+        lead_signal_segments: List of (start_idx, end_idx) tuples
+        preprocessed_signal_lead: 1D array of signal values
+    
+    Returns:
+        segments: List of signal segments (1D arrays)
+    """
+    signal_len = len(preprocessed_signal_lead)
+    segments = []
+    
+    for st, end in lead_signal_segments:
+        # Validate and clamp indices
+        st = max(0, min(int(st), signal_len - 1))
+        end = max(0, min(int(end), signal_len - 1))
+        
+        # Ensure st <= end
+        if st > end:
+            st, end = end, st
+        
+        # Extract segment (guaranteed to have at least one element)
+        segment = preprocessed_signal_lead[st:end+1]
+        segments.append(segment)
+    
     return segments
 
 def calculate_distance(signal, cluster_centers):
@@ -85,7 +110,8 @@ def process_lead_signal(lead, signal_segments, preprocessed_signal, cluster_dir,
     wave_tokens = []  # List to store tokens (one per segment)
     segment_info = []  # Store segment info: (start_idx, end_idx, wave_type)
     
-    # Map wave type to actual file name (capitalize to match actual files)
+    # Map wave type to possible file name variations (handle case sensitivity)
+    # Pretraining saves files as: P_cluster.pkl, QRS_cluster.pkl, T_cluster.pkl, BG_cluster.pkl
     wave_type_to_file = {
         'p': 'P_cluster.pkl',
         'qrs': 'QRS_cluster.pkl',
@@ -96,8 +122,34 @@ def process_lead_signal(lead, signal_segments, preprocessed_signal, cluster_dir,
     for wave_type in wave_types:
         wave_type_preprocessed_signal = process_wave_type_segment(signal_segments[lead][wave_type][0], preprocessed_signal[:, lead])
 
-        # Use correct file name matching actual files
-        cluster_file = os.path.join(cluster_dir, wave_type_to_file[wave_type])
+        # Get the expected cluster file name
+        expected_file = wave_type_to_file[wave_type]
+        cluster_file = os.path.join(cluster_dir, expected_file)
+        
+        # If file doesn't exist, try to find it with case-insensitive search
+        if not os.path.exists(cluster_file):
+            if os.path.exists(cluster_dir):
+                all_files = os.listdir(cluster_dir)
+                # Find file matching pattern (case-insensitive)
+                matching_files = [f for f in all_files if f.lower().endswith(f'{wave_type}_cluster.pkl'.lower())]
+                if matching_files:
+                    cluster_file = os.path.join(cluster_dir, matching_files[0])
+                    # Use print if logger not available yet
+                    try:
+                        logger.info(f"Found cluster file: {matching_files[0]} (expected: {expected_file})")
+                    except:
+                        print(f"Found cluster file: {matching_files[0]} (expected: {expected_file})")
+                else:
+                    # List available files for debugging
+                    cluster_files = [f for f in all_files if f.endswith('_cluster.pkl')]
+                    raise FileNotFoundError(
+                        f"Cluster file not found for wave type '{wave_type}'. "
+                        f"Expected: {expected_file}\n"
+                        f"Cluster directory: {cluster_dir}\n"
+                        f"Available cluster files: {cluster_files}"
+                    )
+            else:
+                raise FileNotFoundError(f"Cluster directory does not exist: {cluster_dir}")
         
         # Load the clustering model (saved with joblib.dump)
         try:
@@ -175,11 +227,52 @@ def vocab_create_assignment(downstrem_task, processed_data_dir, seg_dir, cluster
         v_sentence_num = 0
         
         prefix = f'{downstrem_task}_{suffix}'
-        preprocessed_signals = load_pkl_data(os.path.join(processed_data_dir, f'{prefix}_processed_signals.pkl'))
+        
+        # Load preprocessed signals
+        processed_signals_file = os.path.join(processed_data_dir, f'{prefix}_processed_signals.pkl')
+        if not os.path.exists(processed_signals_file):
+            # List available files for debugging
+            if os.path.exists(processed_data_dir):
+                available_files = [f for f in os.listdir(processed_data_dir) if f.endswith('.pkl')]
+                raise FileNotFoundError(
+                    f"Processed signals file not found: {processed_signals_file}\n"
+                    f"Available files in {processed_data_dir}: {available_files}"
+                )
+            else:
+                raise FileNotFoundError(f"Processed data directory does not exist: {processed_data_dir}")
+        
+        preprocessed_signals = load_pkl_data(processed_signals_file)
                 
         for idx, preprocessed_signal in enumerate(preprocessed_signals):
-            signal_segments = load_pkl_data(os.path.join(seg_dir, f'{prefix}_{idx}_segments.pkl'))
-            labels = load_pkl_data(os.path.join(seg_dir, f'{prefix}_{idx}_label.pkl'))
+            # Load signal segments
+            segments_file = os.path.join(seg_dir, f'{prefix}_{idx}_segments.pkl')
+            if not os.path.exists(segments_file):
+                # List available files for debugging
+                if os.path.exists(seg_dir):
+                    available_files = [f for f in os.listdir(seg_dir) if f.endswith('_segments.pkl')]
+                    raise FileNotFoundError(
+                        f"Segments file not found: {segments_file}\n"
+                        f"Expected pattern: {prefix}_{idx}_segments.pkl\n"
+                        f"Available segment files in {seg_dir}: {available_files}"
+                    )
+                else:
+                    raise FileNotFoundError(f"Segmentation directory does not exist: {seg_dir}")
+            
+            signal_segments = load_pkl_data(segments_file)
+            
+            # Load labels
+            labels_file = os.path.join(seg_dir, f'{prefix}_{idx}_label.pkl')
+            if not os.path.exists(labels_file):
+                # List available files for debugging
+                if os.path.exists(seg_dir):
+                    available_files = [f for f in os.listdir(seg_dir) if f.endswith('_label.pkl')]
+                    raise FileNotFoundError(
+                        f"Labels file not found: {labels_file}\n"
+                        f"Expected pattern: {prefix}_{idx}_label.pkl\n"
+                        f"Available label files in {seg_dir}: {available_files}"
+                    )
+            
+            labels = load_pkl_data(labels_file)
 
             signal_vocabs = Parallel(n_jobs=-1)(
                 delayed(process_lead_signal)(lead, signal_segments, preprocessed_signal, cluster_dir, wave_types) 
@@ -194,9 +287,27 @@ def vocab_create_assignment(downstrem_task, processed_data_dir, seg_dir, cluster
                 # Aggregate signal per segment to match token count
                 # Each segment's signal is represented by its mean value
                 sentence_signal = []
+                signal_len = preprocessed_signal.shape[0]
+                
                 for idx_st, idx_end, _ in segment_info:
+                    # Validate and clamp segment indices to valid range
+                    idx_st = max(0, min(int(idx_st), signal_len - 1))
+                    idx_end = max(0, min(int(idx_end), signal_len - 1))
+                    
+                    # Ensure idx_st <= idx_end
+                    if idx_st > idx_end:
+                        idx_st, idx_end = idx_end, idx_st
+                    
+                    # Extract segment signal (guaranteed to have at least one element after validation)
                     segment_signal = preprocessed_signal[idx_st:idx_end+1, lead]
-                    segment_mean = np.mean(segment_signal)  # Aggregate: use mean of segment
+                    
+                    # Compute mean (should never be empty after validation, but check anyway)
+                    if len(segment_signal) > 0:
+                        segment_mean = float(np.mean(segment_signal))
+                    else:
+                        # Fallback: use value at idx_st (shouldn't happen after validation)
+                        segment_mean = float(preprocessed_signal[idx_st, lead]) if idx_st < signal_len else 0.0
+                    
                     sentence_signal.append(segment_mean)
                 
                 # Assign heartbeat-level labels to segments
