@@ -246,11 +246,28 @@ def evaluate(experiment, val_data_dir, save_dir):
                     batch_preds.append(preds)
                     batch_labels.append(small_labels)
                 
-                all_preds.append(torch.cat(batch_preds, dim=1).cpu())
-                all_labels.append(torch.cat(batch_labels, dim=1).cpu())
+                # Concatenate chunks for this batch along sequence dimension
+                batch_preds_concat = torch.cat(batch_preds, dim=1)  # [batch_size, total_seq_len, ...]
+                batch_labels_concat = torch.cat(batch_labels, dim=1)  # [batch_size, total_seq_len]
+                
+                # Flatten to avoid shape mismatch when concatenating different batches
+                # For binary: [batch_size, seq_len] -> [batch_size * seq_len]
+                # For multi-class: [batch_size, seq_len, num_classes] -> [batch_size * seq_len, num_classes]
+                num_classes = experiment.get('num_classes', 5)
+                if num_classes == 1:
+                    batch_preds_flat = batch_preds_concat.flatten()  # [batch_size * seq_len]
+                    batch_labels_flat = batch_labels_concat.flatten()  # [batch_size * seq_len]
+                else:
+                    batch_size, seq_len, _ = batch_preds_concat.shape
+                    batch_preds_flat = batch_preds_concat.view(-1, num_classes)  # [batch_size * seq_len, num_classes]
+                    batch_labels_flat = batch_labels_concat.flatten()  # [batch_size * seq_len]
+                
+                all_preds.append(batch_preds_flat.cpu())
+                all_labels.append(batch_labels_flat.cpu())
                 
                 pbar.update(1)
 
+    # Now all tensors are flat, so we can concatenate along dim=0
     all_preds = torch.cat(all_preds, dim=0)
     all_labels = torch.cat(all_labels, dim=0)
     
@@ -258,8 +275,7 @@ def evaluate(experiment, val_data_dir, save_dir):
     
     if num_classes == 1:
         # Binary classification
-        all_preds = all_preds.flatten()
-        all_labels = all_labels.flatten()
+        # all_preds and all_labels are already flattened
         predicted_labels = (all_preds > 0.5).float()
         
         accuracy = (predicted_labels == all_labels).float().mean().item()
@@ -268,8 +284,9 @@ def evaluate(experiment, val_data_dir, save_dir):
         specificity = ((1 - predicted_labels) * (1 - all_labels)).sum().item() / ((1 - all_labels).sum().item() + 1e-8)
     else:
         # Multi-class classification
-        all_preds_flat = all_preds.view(-1, num_classes)
-        all_labels_flat = all_labels.view(-1).long()
+        # all_preds is already [total_samples, num_classes], all_labels is [total_samples]
+        all_preds_flat = all_preds  # Already in correct shape
+        all_labels_flat = all_labels.long()  # Just convert to long
         
         # Get predicted classes
         predicted_labels = torch.argmax(all_preds_flat, dim=1)
