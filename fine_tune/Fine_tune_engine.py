@@ -2,10 +2,12 @@ import os
 import pickle
 import torch
 import torch.nn as nn
+import torch.nn.functional as F
 import torch.optim as optim
 from fine_tune.models import ECGEmbeddingModel, ECGBERTModel
 from tqdm import tqdm
 import numpy as np
+from collections import Counter
 
 def load_pkl_data(file_path):
     with open(file_path, 'rb') as f:
@@ -122,6 +124,99 @@ def save_model(fine_tune_model, embedding_model, epoch, batch_num, total_loss, s
     
     save_pkl_data(save_dir, f'pre_batch_trotal_loss.pkl', total_loss)
 
+def calculate_class_weights(train_data_dir, num_classes=5):
+    """
+    Calculate class weights to balance the dataset.
+    Returns weights inversely proportional to class frequency.
+    """
+    logger.info("Calculating class weights from training data...")
+    all_labels = []
+    
+    # Load all training data to calculate class distribution
+    train_files = [f for f in os.listdir(train_data_dir) if f.startswith('sentence_') and f.endswith('.pkl')]
+    
+    for file_name in train_files:
+        file_path = os.path.join(train_data_dir, file_name)
+        data = load_pkl_data(file_path)
+        labels = data[2]  # labels are in index 2
+        if isinstance(labels, np.ndarray):
+            all_labels.extend(labels.flatten().tolist())
+        else:
+            all_labels.extend(np.array(labels).flatten().tolist())
+    
+    # Count class frequencies
+    label_counts = Counter(all_labels)
+    total_samples = len(all_labels)
+    
+    logger.info(f"Class distribution in training data:")
+    class_names = ['N (Normal)', 'S (Supraventricular)', 'V (Ventricular)', 'F (Fusion)', 'Q (Paced/Unclassifiable)']
+    for cls in range(num_classes):
+        count = label_counts.get(cls, 0)
+        pct = 100 * count / total_samples if total_samples > 0 else 0
+        class_name = class_names[cls] if cls < len(class_names) else 'Unknown'
+        logger.info(f"  Class {cls} ({class_name}): {count:,} ({pct:.2f}%)")
+    
+    # Calculate weights: inverse frequency weighting
+    # Weight = total_samples / (num_classes * class_count)
+    class_weights = []
+    for cls in range(num_classes):
+        count = label_counts.get(cls, 1)  # Avoid division by zero
+        # Inverse frequency weighting
+        weight = total_samples / (num_classes * count)
+        class_weights.append(weight)
+    
+    # Normalize weights so they sum to num_classes (optional, but helps with stability)
+    class_weights = np.array(class_weights)
+    class_weights = class_weights / class_weights.sum() * num_classes
+    
+    logger.info(f"Class weights: {dict(zip(range(num_classes), class_weights))}")
+    
+    return torch.FloatTensor(class_weights).cuda()
+
+class FocalLoss(nn.Module):
+    """
+    Focal Loss for addressing class imbalance.
+    
+    FL(p_t) = -α_t * (1 - p_t)^γ * log(p_t)
+    
+    where:
+    - p_t is the predicted probability for the true class
+    - α_t is the class weight (for class balancing)
+    - γ (gamma) is the focusing parameter
+    
+    Args:
+        alpha: Weighting factor for each class (tensor of size num_classes)
+        gamma: Focusing parameter (default: 2.0). Higher gamma focuses more on hard examples
+        reduction: 'mean' or 'sum'
+    """
+    def __init__(self, alpha=None, gamma=2.0, reduction='mean'):
+        super(FocalLoss, self).__init__()
+        self.alpha = alpha
+        self.gamma = gamma
+        self.reduction = reduction
+        
+    def forward(self, inputs, targets):
+        """
+        Args:
+            inputs: [batch_size, num_classes] logits
+            targets: [batch_size] class indices
+        """
+        # Compute cross entropy loss
+        ce_loss = F.cross_entropy(inputs, targets, reduction='none', weight=self.alpha)
+        
+        # Get predicted probabilities for the true class
+        pt = torch.exp(-ce_loss)  # p_t = exp(-CE_loss)
+        
+        # Compute focal loss
+        focal_loss = ((1 - pt) ** self.gamma) * ce_loss
+        
+        if self.reduction == 'mean':
+            return focal_loss.mean()
+        elif self.reduction == 'sum':
+            return focal_loss.sum()
+        else:
+            return focal_loss
+
 def fine_tune(emb_model, bert_model, experiment, train_data_dir, save_dir):
 
     extra_model = nn.Sequential()
@@ -134,10 +229,23 @@ def fine_tune(emb_model, bert_model, experiment, train_data_dir, save_dir):
     
     # Use appropriate loss function based on number of classes
     num_classes = experiment.get('num_classes', 5)  # Default to 5 for AAMI standard
+    use_focal_loss = experiment.get('use_focal_loss', True)  # Default to True for better class balancing
+    focal_gamma = experiment.get('focal_gamma', 2.0)  # Focusing parameter for focal loss
+    
     if num_classes == 1:
         criterion = nn.BCEWithLogitsLoss()
     else:
-        criterion = nn.CrossEntropyLoss()  # For multi-class classification
+        # Calculate class weights for balancing
+        class_weights = calculate_class_weights(train_data_dir, num_classes)
+        
+        if use_focal_loss:
+            # Use Focal Loss: focuses on hard examples and handles class imbalance
+            criterion = FocalLoss(alpha=class_weights, gamma=focal_gamma, reduction='mean')
+            logger.info(f"Using Focal Loss with gamma={focal_gamma} and class weights for balancing")
+        else:
+            # Use weighted CrossEntropyLoss
+            criterion = nn.CrossEntropyLoss(weight=class_weights)
+            logger.info(f"Using weighted CrossEntropyLoss with class weights for balancing")
     
     optimizer = optim.Adam(list(bert_model.parameters()), lr=experiment.get('lr', 0.001))
 
@@ -462,6 +570,8 @@ def Fine_tune_engine(downstream_tasks, pre_train_model_dir, dir):
                 "lr": 0.001,
                 "epochs": 13,
                 "num_classes": 5,  # 5-class AAMI standard: N, S, V, F, Q
+                "use_focal_loss": True,  # Use Focal Loss for better class balancing
+                "focal_gamma": 2.0,  # Focusing parameter (higher = more focus on hard examples)
                 "extra_layers": [
                     {'name': 'fc1', 'module': nn.Linear(embed_size, vocab_size)},
                     {'name': 'fc2', 'module': nn.Linear(vocab_size, 5)}  # 5 classes for AAMI standard
